@@ -2,19 +2,21 @@
 <html lang="it">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,viewport-fit=cover">
 <meta name="theme-color" content="#000000">
 <title>Teleprompter Live</title>
 <style>
 :root{--bg:#f6f5f2;--fg:#1a1a1a;--muted:#6b6b6b;--card:#fff;--line:#e2e0da;--accent:#d9480f;--ok:#2b8a3e;--warn:#c92a2a}
 @media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#f1f1f1;--muted:#9a9a9a;--card:#1d1d1d;--line:#2e2e2e;--accent:#ff8a4c}}
 *{box-sizing:border-box}
+input,textarea,select{font-size:16px}
+html{-webkit-text-size-adjust:100%;text-size-adjust:100%}
 html,body{margin:0;height:100%}
 body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
 .app{display:flex;flex-direction:column;height:100dvh}
 header{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
 .tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:3px}
-.tabs button{border:0;background:transparent;color:var(--muted);font:600 15px/1 inherit;padding:9px 16px;border-radius:8px;cursor:pointer}
+.tabs button{border:0;background:transparent;color:var(--muted);font-family:inherit;font-weight:600;font-size:15px;line-height:1;padding:9px 16px;border-radius:8px;cursor:pointer}
 .tabs button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;text-align:right}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
@@ -23,14 +25,14 @@ main{flex:1;min-height:0;display:flex;flex-direction:column}
 .hidden{display:none!important}
 section{flex:1;min-height:0;display:flex;flex-direction:column}
 #writer{padding:16px;gap:12px}
-#writer textarea{flex:1;width:100%;resize:none;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);font:20px/1.45 inherit;padding:14px}
+#writer textarea{flex:1;width:100%;resize:none;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);font-family:inherit;font-size:20px;line-height:1.45;padding:14px}
 #writer textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
 .row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);font:600 14px inherit;padding:10px 14px;border-radius:10px;cursor:pointer}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);font-family:inherit;font-weight:600;font-size:14px;padding:10px 14px;border-radius:10px;cursor:pointer}
 .btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
 .btn.danger{color:var(--warn)}
 .hint{font-size:13px;color:var(--muted)}
-input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;width:9ch;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+input.code{font:700 22px/1 ui-monospace,monospace;font-size:22px;letter-spacing:.2em;text-transform:uppercase;width:9ch;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
 #reader{background:#000;color:#fff}
 #pair{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;color:#aaa}
 #pair .big{font:800 60px/1 ui-monospace,monospace;letter-spacing:.15em;color:#fff;margin:14px 0}
