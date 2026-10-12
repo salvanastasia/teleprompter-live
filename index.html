@@ -1,0 +1,190 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#000000">
+<title>Teleprompter Live</title>
+<style>
+:root{--bg:#f6f5f2;--fg:#1a1a1a;--muted:#6b6b6b;--card:#fff;--line:#e2e0da;--accent:#d9480f;--ok:#2b8a3e;--warn:#c92a2a}
+@media (prefers-color-scheme:dark){:root{--bg:#121212;--fg:#f1f1f1;--muted:#9a9a9a;--card:#1d1d1d;--line:#2e2e2e;--accent:#ff8a4c}}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%}
+body{background:var(--bg);color:var(--fg);font-family:system-ui,-apple-system,"Segoe UI",sans-serif;-webkit-tap-highlight-color:transparent}
+.app{display:flex;flex-direction:column;height:100dvh}
+header{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid var(--line);background:var(--card)}
+.tabs{display:flex;background:var(--bg);border-radius:10px;padding:3px;gap:3px}
+.tabs button{border:0;background:transparent;color:var(--muted);font:600 15px/1 inherit;padding:9px 16px;border-radius:8px;cursor:pointer}
+.tabs button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
+.status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;text-align:right}
+.dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
+.dot.ok{background:var(--ok)}.dot.err{background:var(--warn)}
+main{flex:1;min-height:0;display:flex;flex-direction:column}
+.hidden{display:none!important}
+section{flex:1;min-height:0;display:flex;flex-direction:column}
+#writer{padding:16px;gap:12px}
+#writer textarea{flex:1;width:100%;resize:none;border:1px solid var(--line);border-radius:12px;background:var(--card);color:var(--fg);font:20px/1.45 inherit;padding:14px}
+#writer textarea:focus{outline:2px solid var(--accent);outline-offset:-1px}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:var(--card);color:var(--fg);font:600 14px inherit;padding:10px 14px;border-radius:10px;cursor:pointer}
+.btn.primary{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn.danger{color:var(--warn)}
+.hint{font-size:13px;color:var(--muted)}
+input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;width:9ch;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
+#reader{background:#000;color:#fff}
+#pair{padding:28px 20px;text-align:center;color:#aaa}
+#pair .big{font:800 56px/1 ui-monospace,monospace;letter-spacing:.15em;color:#fff;margin:12px 0}
+#scroll{flex:1;overflow-y:auto;padding:24px 20px 40vh}
+#text{white-space:pre-wrap;word-wrap:break-word;font-weight:600;line-height:1.3;margin:0}
+#text.empty{color:#666;font-weight:400}
+#reader.mirror #text{transform:scaleX(-1)}
+.ctrl{display:flex;gap:6px;padding:8px 12px calc(8px + env(safe-area-inset-bottom));background:#111;border-top:1px solid #222;align-items:center;flex-wrap:wrap}
+.ctrl .btn{background:#1e1e1e;border-color:#333;color:#eee;padding:8px 12px}
+.ctrl .btn.on{border-color:var(--accent);color:var(--accent)}
+.ctrl span{color:#888;font-size:13px;min-width:36px;text-align:center}
+.ctrl .code-sm{margin-left:auto;font:700 13px ui-monospace,monospace;color:#888}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <div class="tabs">
+      <button id="tW">✍️ Scrivi</button>
+      <button id="tR">📺 Leggi</button>
+    </div>
+    <div class="status"><span class="dot" id="dot"></span><span id="st"></span></div>
+  </header>
+  <main>
+    <section id="writer">
+      <div class="row">
+        <span class="hint">Codice del lettore:</span>
+        <input class="code" id="codeIn" maxlength="4" autocomplete="off" autocapitalize="characters" placeholder="ABCD">
+        <button class="btn primary" id="connect">Collega</button>
+      </div>
+      <textarea id="ta" placeholder="Scrivi qui… il testo appare in tempo reale sul telefono che legge."></textarea>
+      <div class="row">
+        <button class="btn danger" id="clr">Cancella tutto</button>
+        <span class="hint" id="cnt">0 parole</span>
+      </div>
+    </section>
+    <section id="reader" class="hidden">
+      <div id="pair">
+        Su l'altro telefono apri questa pagina, scegli <b>Scrivi</b> e inserisci il codice:
+        <div class="big" id="myCode">····</div>
+        <span id="pairSt">Preparazione…</span>
+      </div>
+      <div id="scroll" class="hidden"><p id="text" class="empty">In attesa del testo…</p></div>
+      <div class="ctrl">
+        <button class="btn" id="aMinus">A−</button><span id="fs">40</span><button class="btn" id="aPlus">A+</button>
+        <button class="btn on" id="follow">Segui ↓</button>
+        <button class="btn" id="mir">Specchio</button>
+        <button class="btn" id="full">⛶</button>
+        <span class="code-sm" id="codeSm"></span>
+      </div>
+    </section>
+  </main>
+</div>
+
+<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script>
+(function(){
+  const $=id=>document.getElementById(id);
+  const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
+  const PREFIX='tp-live-7f3a-';
+  const ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
+  const ta=$('ta'),text=$('text'),scroll=$('scroll'),reader=$('reader');
+  let mode=null, peer=null, conns=[], conn=null, retryT=null, follow=true;
+  let fontSize=+ls.get('tp_fs',40), mirror=ls.get('tp_mir','0')==='1';
+  ta.value=ls.get('tp_text','');
+
+  function status(k,m){$('dot').className='dot '+(k||'');$('st').textContent=m}
+  function genCode(){let s='';for(let i=0;i<4;i++)s+=ALPH[Math.floor(Math.random()*ALPH.length)];return s}
+  function teardown(){clearTimeout(retryT);conns=[];conn=null;if(peer){try{peer.destroy()}catch(e){}peer=null}}
+
+  // ---------- modes
+  function setMode(m){
+    if(m===mode)return; mode=m; ls.set('tp_mode',m);
+    $('tW').classList.toggle('on',m==='write');$('tR').classList.toggle('on',m==='read');
+    $('writer').classList.toggle('hidden',m!=='write');reader.classList.toggle('hidden',m!=='read');
+    teardown();
+    if(m==='read') startReader(); else startWriter();
+  }
+  $('tW').onclick=()=>setMode('write');$('tR').onclick=()=>setMode('read');
+
+  // ---------- reader
+  function applyStyle(){text.style.fontSize=fontSize+'px';$('fs').textContent=fontSize;reader.classList.toggle('mirror',mirror);$('mir').classList.toggle('on',mirror)}
+  $('aMinus').onclick=()=>{fontSize=Math.max(18,fontSize-4);ls.set('tp_fs',fontSize);applyStyle()};
+  $('aPlus').onclick=()=>{fontSize=Math.min(140,fontSize+4);ls.set('tp_fs',fontSize);applyStyle()};
+  $('mir').onclick=()=>{mirror=!mirror;ls.set('tp_mir',mirror?'1':'0');applyStyle()};
+  $('follow').onclick=()=>{follow=!follow;$('follow').classList.toggle('on',follow);toBottom()};
+  $('full').onclick=()=>{const el=document.documentElement;try{document.fullscreenElement?document.exitFullscreen():(el.requestFullscreen||el.webkitRequestFullscreen).call(el)}catch(e){}};
+  function toBottom(){if(follow)requestAnimationFrame(()=>{scroll.scrollTop=scroll.scrollHeight})}
+  function showText(t){
+    $('pair').classList.add('hidden');scroll.classList.remove('hidden');
+    text.textContent=t||'In attesa del testo…';text.classList.toggle('empty',!t);toBottom();
+  }
+
+  function startReader(code){
+    code=code||ls.get('tp_rcode','')||genCode();
+    $('myCode').textContent=code;$('codeSm').textContent=code;
+    $('pairSt').textContent='Preparazione…';status('','Avvio…');
+    peer=new Peer(PREFIX+code,{host:'0.peerjs.com',port:443,secure:true,path:'/'});
+    peer.on('open',()=>{ls.set('tp_rcode',code);$('pairSt').textContent='Pronto, in attesa di chi scrive.';status('ok','Pronto · '+code)});
+    peer.on('connection',c=>{
+      conns.push(c);
+      c.on('open',()=>status('ok','Collegato · '+code));
+      c.on('data',d=>{if(d&&typeof d.t==='string')showText(d.t)});
+      c.on('close',()=>{conns=conns.filter(x=>x!==c);if(!conns.length)status('','In attesa · '+code)});
+    });
+    peer.on('error',e=>{
+      if(e.type==='unavailable-id'){teardown();ls.set('tp_rcode','');startReader(genCode());return}
+      status('err','Errore di rete, riprovo…');
+    });
+    peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+  }
+
+  // ---------- writer
+  function countWords(){const n=(ta.value.trim().match(/\S+/g)||[]).length;$('cnt').textContent=n+(n===1?' parola':' parole')}
+  let sendT=null;
+  function push(){if(conn&&conn.open){try{conn.send({t:ta.value})}catch(e){}}}
+  ta.addEventListener('input',()=>{
+    countWords();ls.set('tp_text',ta.value);
+    if(!sendT)sendT=setTimeout(()=>{sendT=null;push()},60);
+  });
+  $('clr').onclick=()=>{if(!ta.value||confirm('Cancellare tutto il testo?')){ta.value='';countWords();ls.set('tp_text','');push();ta.focus()}};
+
+  function startWriter(){
+    countWords();
+    const saved=ls.get('tp_wcode','');$('codeIn').value=saved;
+    status('','Inserisci il codice');
+    peer=new Peer({host:'0.peerjs.com',port:443,secure:true,path:'/'});
+    peer.on('open',()=>{if($('codeIn').value.length===4)connectTo($('codeIn').value)});
+    peer.on('error',e=>{
+      if(e.type==='peer-unavailable'){status('err','Lettore non trovato, riprovo…');scheduleRetry();return}
+      status('err','Errore di rete, riprovo…');scheduleRetry();
+    });
+    peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+  }
+  function scheduleRetry(){clearTimeout(retryT);retryT=setTimeout(()=>{const c=$('codeIn').value;if(mode==='write'&&c.length===4&&!(conn&&conn.open))connectTo(c)},2500)}
+  function connectTo(code){
+    code=code.toUpperCase().trim(); if(code.length!==4||!peer||!peer.open){return}
+    ls.set('tp_wcode',code);
+    if(conn){try{conn.close()}catch(e){}}
+    status('','Collegamento a '+code+'…');
+    const c=peer.connect(PREFIX+code,{reliable:true});conn=c;
+    c.on('open',()=>{status('ok','Collegato · '+code);push()});
+    c.on('close',()=>{if(conn===c){status('err','Disconnesso, riprovo…');scheduleRetry()}});
+    c.on('error',()=>scheduleRetry());
+  }
+  $('connect').onclick=()=>{const v=$('codeIn').value.toUpperCase().trim();$('codeIn').value=v;if(v.length!==4){status('err','Il codice ha 4 caratteri');return}if(peer&&peer.open)connectTo(v);else status('','Attendi un attimo…')};
+  $('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('connect').click()});
+
+  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&mode==='write'&&!(conn&&conn.open))scheduleRetry()});
+
+  applyStyle();
+  if(typeof Peer==='undefined'){status('err','Libreria non caricata, ricarica');return}
+  setMode(ls.get('tp_mode','write'));
+})();
+</script>
+</body>
+</html>
