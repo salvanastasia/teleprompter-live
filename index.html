@@ -18,7 +18,7 @@ header{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1
 .tabs button.on{background:var(--card);color:var(--fg);box-shadow:0 1px 3px rgba(0,0,0,.12)}
 .status{margin-left:auto;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:6px;text-align:right}
 .dot{width:8px;height:8px;border-radius:50%;background:var(--muted);flex:none}
-.dot.ok{background:var(--ok)}.dot.err{background:var(--warn)}
+.dot.ok{background:var(--ok)}.dot.err{background:var(--warn)}.dot.half{background:#f59f00}
 main{flex:1;min-height:0;display:flex;flex-direction:column}
 .hidden{display:none!important}
 section{flex:1;min-height:0;display:flex;flex-direction:column}
@@ -32,8 +32,8 @@ section{flex:1;min-height:0;display:flex;flex-direction:column}
 .hint{font-size:13px;color:var(--muted)}
 input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-transform:uppercase;width:9ch;padding:10px 12px;border:1px solid var(--line);border-radius:10px;background:var(--card);color:var(--fg)}
 #reader{background:#000;color:#fff}
-#pair{padding:28px 20px;text-align:center;color:#aaa}
-#pair .big{font:800 56px/1 ui-monospace,monospace;letter-spacing:.15em;color:#fff;margin:12px 0}
+#pair{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;padding:24px;text-align:center;color:#aaa}
+#pair .big{font:800 60px/1 ui-monospace,monospace;letter-spacing:.15em;color:#fff;margin:14px 0}
 #scroll{flex:1;overflow-y:auto;padding:24px 20px 40vh}
 #text{white-space:pre-wrap;word-wrap:break-word;font-weight:600;line-height:1.3;margin:0}
 #text.empty{color:#666;font-weight:400}
@@ -69,9 +69,9 @@ input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-trans
     </section>
     <section id="reader" class="hidden">
       <div id="pair">
-        Su l'altro telefono apri questa pagina, scegli <b>Scrivi</b> e inserisci il codice:
+        Sul telefono che scrive apri questa pagina, scegli <b>Scrivi</b> e inserisci il codice:
         <div class="big" id="myCode">····</div>
-        <span id="pairSt">Preparazione…</span>
+        <span id="pairSt">Connessione…</span>
       </div>
       <div id="scroll" class="hidden"><p id="text" class="empty">In attesa del testo…</p></div>
       <div class="ctrl">
@@ -85,28 +85,25 @@ input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-trans
   </main>
 </div>
 
-<script src="https://unpkg.com/peerjs@1.5.4/dist/peerjs.min.js"></script>
+<script src="mqtt.min.js"></script>
+<script src="tp-sync.js"></script>
 <script>
 (function(){
   const $=id=>document.getElementById(id);
   const ls={get(k,d){try{const v=localStorage.getItem(k);return v==null?d:v}catch(e){return d}},set(k,v){try{localStorage.setItem(k,v)}catch(e){}}};
-  const PREFIX='tp-live-7f3a-';
-  const ALPH='ABCDEFGHJKLMNPQRSTUVWXYZ23456789';
   const ta=$('ta'),text=$('text'),scroll=$('scroll'),reader=$('reader');
-  let mode=null, peer=null, conns=[], conn=null, retryT=null, follow=true;
+  let mode=null, link=null, follow=true, lastText=null;
   let fontSize=+ls.get('tp_fs',40), mirror=ls.get('tp_mir','0')==='1';
   ta.value=ls.get('tp_text','');
 
   function status(k,m){$('dot').className='dot '+(k||'');$('st').textContent=m}
-  function genCode(){let s='';for(let i=0;i<4;i++)s+=ALPH[Math.floor(Math.random()*ALPH.length)];return s}
-  function teardown(){clearTimeout(retryT);conns=[];conn=null;if(peer){try{peer.destroy()}catch(e){}peer=null}}
+  function stop(){if(link){link.close();link=null}}
 
-  // ---------- modes
   function setMode(m){
     if(m===mode)return; mode=m; ls.set('tp_mode',m);
     $('tW').classList.toggle('on',m==='write');$('tR').classList.toggle('on',m==='read');
     $('writer').classList.toggle('hidden',m!=='write');reader.classList.toggle('hidden',m!=='read');
-    teardown();
+    stop();
     if(m==='read') startReader(); else startWriter();
   }
   $('tW').onclick=()=>setMode('write');$('tR').onclick=()=>setMode('read');
@@ -120,69 +117,43 @@ input.code{font:700 22px/1 ui-monospace,monospace;letter-spacing:.2em;text-trans
   $('full').onclick=()=>{const el=document.documentElement;try{document.fullscreenElement?document.exitFullscreen():(el.requestFullscreen||el.webkitRequestFullscreen).call(el)}catch(e){}};
   function toBottom(){if(follow)requestAnimationFrame(()=>{scroll.scrollTop=scroll.scrollHeight})}
   function showText(t){
-    $('pair').classList.add('hidden');scroll.classList.remove('hidden');
+    lastText=t;$('pair').classList.add('hidden');scroll.classList.remove('hidden');
     text.textContent=t||'In attesa del testo…';text.classList.toggle('empty',!t);toBottom();
   }
-
-  function startReader(code){
-    code=code||ls.get('tp_rcode','')||genCode();
+  function startReader(){
+    let code=ls.get('tp_rcode','');if(!TPSync.validCode(code)){code=TPSync.genCode();ls.set('tp_rcode',code)}
     $('myCode').textContent=code;$('codeSm').textContent=code;
-    $('pairSt').textContent='Preparazione…';status('','Avvio…');
-    peer=new Peer(PREFIX+code,{host:'0.peerjs.com',port:443,secure:true,path:'/'});
-    peer.on('open',()=>{ls.set('tp_rcode',code);$('pairSt').textContent='Pronto, in attesa di chi scrive.';status('ok','Pronto · '+code)});
-    peer.on('connection',c=>{
-      conns.push(c);
-      c.on('open',()=>status('ok','Collegato · '+code));
-      c.on('data',d=>{if(d&&typeof d.t==='string')showText(d.t)});
-      c.on('close',()=>{conns=conns.filter(x=>x!==c);if(!conns.length)status('','In attesa · '+code)});
+    if(lastText===null){$('pair').classList.remove('hidden');scroll.classList.add('hidden')}
+    status('','Connessione…');
+    link=TPSync.reader(code,{
+      onText:showText,
+      onState:(up)=>{status(up?'ok':'err',up?'Pronto · '+code:'Riconnessione…');$('pairSt').textContent=up?'Pronto, in attesa di chi scrive.':'Connessione al server…'}
     });
-    peer.on('error',e=>{
-      if(e.type==='unavailable-id'){teardown();ls.set('tp_rcode','');startReader(genCode());return}
-      status('err','Errore di rete, riprovo…');
-    });
-    peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
   }
 
   // ---------- writer
   function countWords(){const n=(ta.value.trim().match(/\S+/g)||[]).length;$('cnt').textContent=n+(n===1?' parola':' parole')}
-  let sendT=null;
-  function push(){if(conn&&conn.open){try{conn.send({t:ta.value})}catch(e){}}}
-  ta.addEventListener('input',()=>{
-    countWords();ls.set('tp_text',ta.value);
-    if(!sendT)sendT=setTimeout(()=>{sendT=null;push()},60);
-  });
-  $('clr').onclick=()=>{if(!ta.value||confirm('Cancellare tutto il testo?')){ta.value='';countWords();ls.set('tp_text','');push();ta.focus()}};
-
+  ta.addEventListener('input',()=>{countWords();ls.set('tp_text',ta.value);if(link)link.send(ta.value)});
+  $('clr').onclick=()=>{if(!ta.value||confirm('Cancellare tutto il testo?')){ta.value='';countWords();ls.set('tp_text','');if(link)link.send('');ta.focus()}};
+  function writerState(s){
+    if(!s.up) status('err','Riconnessione al server…');
+    else if(s.readerOnline) status('ok','Lettore collegato · '+s.code);
+    else status('half','Lettore non attivo · '+s.code);
+  }
+  function connectTo(code){
+    stop();ls.set('tp_wcode',code);status('','Collegamento…');
+    link=TPSync.writer(code,{onState:writerState,initial:()=>ta.value});
+  }
   function startWriter(){
     countWords();
     const saved=ls.get('tp_wcode','');$('codeIn').value=saved;
-    status('','Inserisci il codice');
-    peer=new Peer({host:'0.peerjs.com',port:443,secure:true,path:'/'});
-    peer.on('open',()=>{if($('codeIn').value.length===4)connectTo($('codeIn').value)});
-    peer.on('error',e=>{
-      if(e.type==='peer-unavailable'){status('err','Lettore non trovato, riprovo…');scheduleRetry();return}
-      status('err','Errore di rete, riprovo…');scheduleRetry();
-    });
-    peer.on('disconnected',()=>{try{peer.reconnect()}catch(e){}});
+    if(TPSync.validCode(saved))connectTo(saved);else status('','Inserisci il codice');
   }
-  function scheduleRetry(){clearTimeout(retryT);retryT=setTimeout(()=>{const c=$('codeIn').value;if(mode==='write'&&c.length===4&&!(conn&&conn.open))connectTo(c)},2500)}
-  function connectTo(code){
-    code=code.toUpperCase().trim(); if(code.length!==4||!peer||!peer.open){return}
-    ls.set('tp_wcode',code);
-    if(conn){try{conn.close()}catch(e){}}
-    status('','Collegamento a '+code+'…');
-    const c=peer.connect(PREFIX+code,{reliable:true});conn=c;
-    c.on('open',()=>{status('ok','Collegato · '+code);push()});
-    c.on('close',()=>{if(conn===c){status('err','Disconnesso, riprovo…');scheduleRetry()}});
-    c.on('error',()=>scheduleRetry());
-  }
-  $('connect').onclick=()=>{const v=$('codeIn').value.toUpperCase().trim();$('codeIn').value=v;if(v.length!==4){status('err','Il codice ha 4 caratteri');return}if(peer&&peer.open)connectTo(v);else status('','Attendi un attimo…')};
+  $('connect').onclick=()=>{const v=$('codeIn').value.toUpperCase().trim();$('codeIn').value=v;if(!TPSync.validCode(v)){status('err','Il codice ha 4 caratteri');return}connectTo(v)};
   $('codeIn').addEventListener('keydown',e=>{if(e.key==='Enter')$('connect').click()});
 
-  document.addEventListener('visibilitychange',()=>{if(document.visibilityState==='visible'&&mode==='write'&&!(conn&&conn.open))scheduleRetry()});
-
   applyStyle();
-  if(typeof Peer==='undefined'){status('err','Libreria non caricata, ricarica');return}
+  if(typeof mqtt==='undefined'){status('err','Libreria non caricata, ricarica');return}
   setMode(ls.get('tp_mode','write'));
 })();
 </script>
